@@ -24,7 +24,7 @@ transform = transforms.Compose([
 
 @st.cache_resource(show_spinner=False)
 def download_blob_from_azure(container: str, blob_name: str, local_filename: str):
-    connection_str = st.secrets["AZURE_STORAGE_CONNECTION_STRING"]
+    connection_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
     blob_service = BlobServiceClient.from_connection_string(connection_str)
     blob_client = blob_service.get_blob_client(container=container, blob=blob_name)
     local_path = os.path.join(tempfile.gettempdir(), local_filename)
@@ -33,7 +33,7 @@ def download_blob_from_azure(container: str, blob_name: str, local_filename: str
             f.write(blob_client.download_blob().readall())
     return local_path
 
-with st.spinner("🔄 Loading models from Azure Blob Storage..."):
+with st.spinner(" Loading models from Azure Blob Storage..."):
     classifier_path = download_blob_from_azure("model-dump", "product_classifier.pth", "product_classifier.pth")
     capsule_path = download_blob_from_azure("model-dump", "model_capsule_patch.pth", "model_capsule_patch.pth")
     bottle_feat_path = download_blob_from_azure("model-dump", "resnet_bottle_train_features.npy", "resnet_bottle_train_features.npy")
