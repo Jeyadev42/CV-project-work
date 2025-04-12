@@ -7,6 +7,9 @@ from PIL import Image
 from sklearn.neighbors import NearestNeighbors
 from torchvision import models
 import joblib
+import os
+import tempfile
+from azure.storage.blob import BlobServiceClient
 from model import (
     CapsulePatchAutoencoder,
     ProductClassifier
@@ -19,28 +22,51 @@ transform = transforms.Compose([
     transforms.ToTensor()
 ])
 
+@st.cache_resource(show_spinner=False)
+def download_blob_from_azure(container: str, blob_name: str, local_filename: str):
+    connection_str = st.secrets["AZURE_STORAGE_CONNECTION_STRING"]
+    blob_service = BlobServiceClient.from_connection_string(connection_str)
+    blob_client = blob_service.get_blob_client(container=container, blob=blob_name)
+    local_path = os.path.join(tempfile.gettempdir(), local_filename)
+    if not os.path.exists(local_path):
+        with open(local_path, "wb") as f:
+            f.write(blob_client.download_blob().readall())
+    return local_path
+
+with st.spinner("🔄 Loading models from Azure Blob Storage..."):
+    classifier_path = download_blob_from_azure("model-dump", "product_classifier.pth", "product_classifier.pth")
+    capsule_path = download_blob_from_azure("model-dump", "model_capsule_patch.pth", "model_capsule_patch.pth")
+    bottle_feat_path = download_blob_from_azure("model-dump", "resnet_bottle_train_features.npy", "resnet_bottle_train_features.npy")
+    leather_feat_path = download_blob_from_azure("model-dump", "resnet_leather_train_features.npy", "resnet_leather_train_features.npy")
+    bottle_nn_path = download_blob_from_azure("model-dump", "resnet_bottle_nn_model.joblib", "resnet_bottle_nn_model.joblib")
+    leather_nn_path = download_blob_from_azure("model-dump", "resnet_leather_nn_model.joblib", "resnet_leather_nn_model.joblib")
+
+# Load classifier
 classifier = ProductClassifier().to(device)
-classifier.load_state_dict(torch.load("Models_dump/product_classifier.pth", map_location=device))
+classifier.load_state_dict(torch.load(classifier_path, map_location=device))
 classifier.eval()
 
+# Capsule autoencoder
 model_capsule = CapsulePatchAutoencoder().to(device)
-model_capsule.load_state_dict(torch.load("Models_dump/model_capsule_patch.pth", map_location=device))
+model_capsule.load_state_dict(torch.load(capsule_path, map_location=device))
 model_capsule.eval()
 
+# ResNet setup
 from torchvision.models import ResNet18_Weights
 resnet = models.resnet18(weights=ResNet18_Weights.DEFAULT).to(device)
 resnet.eval()
 features = []
 resnet.layer2.register_forward_hook(lambda m, i, o: features.append(o))
 
-nn_models = {
-    "bottle": joblib.load("Models_dump/resnet_bottle_nn_model.joblib"),
-    "leather": joblib.load("Models_dump/resnet_leather_nn_model.joblib")
+# Load features and models
+train_feats = {
+    "bottle": np.load(bottle_feat_path),
+    "leather": np.load(leather_feat_path)
 }
 
-train_feats = {
-    "bottle": np.load("Models_dump/resnet_bottle_train_features.npy"),
-    "leather": np.load("Models_dump/resnet_leather_train_features.npy")
+nn_models = {
+    "bottle": joblib.load(bottle_nn_path),
+    "leather": joblib.load(leather_nn_path)
 }
 
 # ----------------- HELPERS -----------------
@@ -112,7 +138,6 @@ def capsule_autoencoder(tensor, img):
     return overlay_resized, img_resized, score
 
 # ----------------- UI -----------------
-
 st.title("Anomaly Detector")
 uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
@@ -131,7 +156,7 @@ if uploaded_file is not None:
         elif category_predicted == "capsule":
             overlay_resized, img_resized, score = capsule_autoencoder(tensor, img)
 
-        threshold = 10  
+        threshold = 10
         st.write(f"Anomaly Score: {score:.2f}%")
         if score > threshold:
             st.error(f"⚠️ This is a Defective {category_predicted.upper()}.")
