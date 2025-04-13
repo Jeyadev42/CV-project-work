@@ -5,7 +5,7 @@ import os
 st.title("Example Images for Anomaly Detection")
 st.write("Use the following examples if you don't have an image to test. You can download them and upload on the main detection page.")
 
-image_dir = "example"
+image_dir = "Streamlit_app\example"
 
 example_images = {
     "Bottle": {
