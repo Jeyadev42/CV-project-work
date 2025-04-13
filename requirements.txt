@@ -8,3 +8,4 @@ streamlit
 joblib
 tqdm
 azure-storage-blob
+tensorflow >= 2.11.0

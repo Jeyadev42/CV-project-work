@@ -1,5 +1,9 @@
+
+
 import streamlit as st
 import torch
+from io import BytesIO
+import tensorflow as tf
 import torchvision.transforms as transforms
 import numpy as np
 import cv2
@@ -40,6 +44,8 @@ with st.spinner(" Loading models from Azure Blob Storage..."):
     leather_feat_path = download_blob_from_azure("model-dump", "resnet_leather_train_features.npy", "resnet_leather_train_features.npy")
     bottle_nn_path = download_blob_from_azure("model-dump", "resnet_bottle_nn_model.joblib", "resnet_bottle_nn_model.joblib")
     leather_nn_path = download_blob_from_azure("model-dump", "resnet_leather_nn_model.joblib", "resnet_leather_nn_model.joblib")
+    #hazelnut_model_path = download_blob_from_azure("model-dump", "hazelnut.keras", "hazelnut.keras")
+
 
 # Load classifier
 classifier = ProductClassifier().to(device)
@@ -69,6 +75,10 @@ nn_models = {
     "leather": joblib.load(leather_nn_path)
 }
 
+# Download hazelnut.keras model from Azure
+#hazelnut_model_path = download_blob_from_azure("model-dump", "hazelnut.keras", "hazelnut.keras")
+#hazelnut_model = tf.keras.models.load_model(hazelnut_model_path)
+
 # ----------------- HELPERS -----------------
 
 def predict_category(tensor, classifier):
@@ -82,6 +92,33 @@ def predict_category(tensor, classifier):
         else:
             pred = "unknown"
         return pred
+    
+def load_hazelnut_model():
+    connection_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    Blob_service = BlobServiceClient.from_connection_string(connection_str)
+    blob_client = Blob_service.get_blob_client(container="model-dump", blob="Hazelnut.keras")
+
+        # Create a BytesIO stream and load the model from Azure Blob
+    stream = BytesIO()
+    blob_client.download_blob().readinto(stream)
+    stream.seek(0)
+
+        # Save the content of the BytesIO stream to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".keras") as temp_file:
+        temp_file.write(stream.read())
+        temp_file_path = temp_file.name
+        
+        # Ensure the file is properly closed before loading the model
+    temp_file.close()
+        
+        # Load the model using the path to the temporary file
+    model = tf.keras.models.load_model(temp_file_path)
+        
+        # Clean up the temporary file after loading the model
+    os.remove(temp_file_path)
+        
+    return model
+
 
 def extract_resnet_feature(img):
     features.clear()
@@ -137,8 +174,27 @@ def capsule_autoencoder(tensor, img):
     score = np.mean(error_map) * 100
     return overlay_resized, img_resized, score
 
+def hazelnut_anomaly_detection(img_tensor, original_img, model):
+    # Resize the tensor to (64, 64)
+    resized_tensor = transforms.Resize((64, 64))(original_img)
+    resized_tensor = transforms.ToTensor()(resized_tensor).unsqueeze(0).numpy()  # (1, 3, 64, 64)
+    resized_tensor = np.transpose(resized_tensor, (0, 2, 3, 1))  # to (1, 64, 64, 3)
+
+    recon = model.predict(resized_tensor)
+    error_map = np.mean(np.abs(resized_tensor - recon), axis=-1).squeeze()  # shape: (64, 64)
+
+    # Upscale error map to match original for visualization
+    error_map_resized = cv2.resize(error_map, (256, 256), interpolation=cv2.INTER_LINEAR)
+    overlay = overlay_heatmap(original_img, error_map_resized)
+    overlay_resized = cv2.resize(overlay, (300, 300))
+    img_resized = original_img.resize((300, 300))
+    score = np.mean(error_map_resized) * 100
+    return overlay_resized, img_resized, score
+
+hazelnut_model = load_hazelnut_model()
+
 # ----------------- UI -----------------
-st.title("Anomaly Detector")
+st.title("Anomaly Detector for Bottles, Hazelnut,Carpets and capsules")
 uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
@@ -148,15 +204,18 @@ if uploaded_file is not None:
     category_predicted = predict_category(tensor, classifier)
     st.info(f"Predicted Category: **{category_predicted.upper()}**")
 
-    supported_categories = ["bottle", "leather", "capsule"]
+    supported_categories = ["bottle", "leather", "capsule", "hazelnut"]
     if category_predicted in supported_categories:
         st.success(f"✅ Running anomaly detection for {category_predicted.upper()}")
+
         if category_predicted in ["bottle", "leather"]:
             overlay_resized, img_resized, score = resnet_detector(tensor, category_predicted, img)
         elif category_predicted == "capsule":
-            overlay_resized, img_resized, score = capsule_autoencoder(tensor, img)
+            overlay_resized, img_resized, score = capsule_autoencoder(tensor, img, model_capsule)
+        elif category_predicted == "hazelnut":
+            overlay_resized, img_resized, score = hazelnut_anomaly_detection(tensor, img, hazelnut_model)
 
-        threshold = 10
+        threshold = 2
         st.write(f"Anomaly Score: {score:.2f}%")
         if score > threshold:
             st.error(f"⚠️ This is a Defective {category_predicted.upper()}.")
@@ -165,8 +224,9 @@ if uploaded_file is not None:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.image(img_resized, caption="Original Image", use_container_width =False)
+            st.image(img_resized, caption="Original Image", use_container_width=False)
         with col2:
-            st.image(overlay_resized, caption="Anomaly Heatmap", channels="BGR", use_container_width =False)
+            st.image(overlay_resized, caption="Anomaly Heatmap", channels="BGR", use_container_width=False)
     else:
         st.warning(f"⚠️ Anomaly detection is not yet available for `{category_predicted.upper()}`.")
+
