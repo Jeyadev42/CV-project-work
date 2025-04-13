@@ -139,6 +139,11 @@ def capsule_autoencoder(tensor, img):
 
 # ----------------- UI -----------------
 st.title("Anomaly Detector")
+st.subheader("Detect defects in products using deep learning models")
+st.info("Note: Anomaly detection is currently only available for bottle, leather, and capsule categories.")
+st.info("You can use the example images from the sidebar if you don't have an image to test.")
+st.write("Upload an image of a product to check for defects.")
+
 uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
