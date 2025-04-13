@@ -33,7 +33,8 @@ def download_blob_from_azure(container: str, blob_name: str, local_filename: str
             f.write(blob_client.download_blob().readall())
     return local_path
 
-with st.spinner(" Loading models from Azure Blob Storage..."):
+with st.spinner(" Loading models from Azure Blob Storage... May take a while..."):
+    # Download models from Azure Blob Storage
     classifier_path = download_blob_from_azure("model-dump", "product_classifier.pth", "product_classifier.pth")
     capsule_path = download_blob_from_azure("model-dump", "model_capsule_patch.pth", "model_capsule_patch.pth")
     bottle_feat_path = download_blob_from_azure("model-dump", "resnet_bottle_train_features.npy", "resnet_bottle_train_features.npy")
@@ -139,7 +140,7 @@ def capsule_autoencoder(tensor, img):
 
 # ----------------- UI -----------------
 st.title("Anomaly Detector")
-st.subheader("Detect defects in products using deep learning models")
+st.subheader("Detects defects in products using deep learning models")
 st.info("Note: Anomaly detection is currently only available for bottle, leather, and capsule categories.")
 st.info("You can use the example images from the sidebar if you don't have an image to test.")
 st.write("Upload an image of a product to check for defects.")
