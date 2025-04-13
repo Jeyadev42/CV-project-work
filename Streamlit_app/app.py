@@ -165,8 +165,8 @@ if uploaded_file is not None:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.image(img_resized, caption="Original Image", use_column_width=False)
+            st.image(img_resized, caption="Original Image", use_container_width =False)
         with col2:
-            st.image(overlay_resized, caption="Anomaly Heatmap", channels="BGR", use_column_width=False)
+            st.image(overlay_resized, caption="Anomaly Heatmap", channels="BGR", use_container_width =False)
     else:
         st.warning(f"⚠️ Anomaly detection is not yet available for `{category_predicted.upper()}`.")
