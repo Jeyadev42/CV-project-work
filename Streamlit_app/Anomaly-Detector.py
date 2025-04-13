@@ -34,7 +34,6 @@ def download_blob_from_azure(container: str, blob_name: str, local_filename: str
     return local_path
 
 with st.spinner(" Loading models from Azure Blob Storage... May take a while..."):
-    # Download models from Azure Blob Storage
     classifier_path = download_blob_from_azure("model-dump", "product_classifier.pth", "product_classifier.pth")
     capsule_path = download_blob_from_azure("model-dump", "model_capsule_patch.pth", "model_capsule_patch.pth")
     bottle_feat_path = download_blob_from_azure("model-dump", "resnet_bottle_train_features.npy", "resnet_bottle_train_features.npy")
