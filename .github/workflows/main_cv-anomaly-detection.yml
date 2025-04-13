@@ -68,4 +68,4 @@ jobs:
         with:
           app-name: 'cv-anomaly-detection'
           slot-name: 'Production'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D2355FDDB3F343D9B547A84F07C01C22 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_D14DB65F649C4EC28422BB3D773A5DCC }}
