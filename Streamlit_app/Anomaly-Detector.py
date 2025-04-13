@@ -69,6 +69,33 @@ nn_models = {
     "leather": joblib.load(leather_nn_path)
 }
 
+@st.cache_resource(show_spinner=False)
+def load_bottle_autoencoder():
+    model = torch.load("bottle_autoencoder.pth", map_location=device)
+    model.eval()
+    return model
+
+model = load_bottle_autoencoder()
+
+def detect_anomaly(img_tensor, model):
+    img_tensor = img_tensor.unsqueeze(0).to(device)
+    with torch.no_grad():
+        recon = model(img_tensor)
+    error_map = torch.abs(recon - img_tensor).mean(dim=1).squeeze().cpu().numpy()
+    return error_map
+
+def overlay_heatmap(original, error_map):
+    original = np.array(original.resize((256, 256)))
+    if original.ndim == 2:
+        original = cv2.cvtColor(original, cv2.COLOR_GRAY2BGR)
+    elif original.shape[2] == 1:
+        original = cv2.cvtColor(original, cv2.COLOR_GRAY2BGR)
+    error_norm = ((error_map - error_map.min()) / (error_map.max() - error_map.min() + 1e-8) * 255).astype(np.uint8)
+    heatmap = cv2.applyColorMap(error_norm, cv2.COLORMAP_JET)
+    heatmap = cv2.resize(heatmap, (original.shape[1], original.shape[0]))
+    overlay = cv2.addWeighted(original, 0.6, heatmap, 0.4, 0)
+    return overlay
+    
 # ----------------- HELPERS -----------------
 
 def predict_category(tensor, classifier):
@@ -175,3 +202,30 @@ if uploaded_file is not None:
             st.image(overlay_resized, caption="Anomaly Heatmap", channels="BGR", use_container_width =False)
     else:
         st.warning(f"⚠️ Anomaly detection is not yet available for `{category_predicted.upper()}`.")
+
+uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+
+if uploaded_file is not None:
+    img = Image.open(uploaded_file).convert("RGB")
+    tensor = transform(img)
+
+    st.success("Running anomaly detection for BOTTLE")
+
+    error_map = detect_anomaly(tensor, model)
+    overlay = overlay_heatmap(img, error_map)
+    overlay_resized = cv2.resize(overlay, (300, 300))
+    img_resized = img.resize((300, 300))
+    score = np.mean(error_map) * 100
+
+    threshold = 10
+    st.write(f"Anomaly Score: {score:.2f}%")
+    if score > threshold:
+        st.error("⚠️ This is a Defective BOTTLE.")
+    else:
+        st.success("✅ This is a GOOD BOTTLE.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.image(img_resized, caption="Original Image", use_container_width=False)
+    with col2:
+        st.image(overlay_resized, caption="Anomaly Heatmap", channels="BGR", use_container_width=False)
